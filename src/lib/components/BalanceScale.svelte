@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { spring } from 'svelte/motion';
+	import { fade, scale } from 'svelte/transition';
 
 	interface WeightItem {
 		id: string;
@@ -409,6 +410,17 @@
 	</div>
 
 	<div class="scale-container">
+		{#if isSolved}
+			<div class="success-overlay" transition:fade>
+				<div class="success-card" transition:scale>
+					<div class="success-icon">🏆</div>
+					<h3>Misi Tercapai!</h3>
+					<p>Kamu berhasil mengisolasi <strong>x</strong></p>
+					<div class="success-result">x = {formatWeight(displaySolution || 0)}</div>
+					<button class="btn-success-action" onclick={reset}>Main Lagi (Reset)</button>
+				</div>
+			</div>
+		{/if}
 		<div class="pillar">
 			<div class="pillar-base"></div>
 			<div class="pillar-body"></div>
@@ -416,7 +428,6 @@
 		<div class="beam-wrapper" style="transform: rotate({$balance}deg)">
 			<div class="beam">
 				<div class="pan-side left" style="transform: rotate({-$balance}deg)">
-					<div class="strings"><div class="string"></div><div class="string"></div></div>
 					<div class="pan">
 						<div class="pan-surface">
 							{#each leftItems as item (item.id)}
@@ -431,10 +442,10 @@
 							{/each}
 						</div>
 					</div>
+					<div class="pan-support"></div>
 				</div>
 				<div class="pivot"><div class="pivot-circle"></div></div>
 				<div class="pan-side right" style="transform: rotate({-$balance}deg)">
-					<div class="strings"><div class="string"></div><div class="string"></div></div>
 					<div class="pan">
 						<div class="pan-surface">
 							{#each rightItems as item (item.id)}
@@ -449,6 +460,7 @@
 							{/each}
 						</div>
 					</div>
+					<div class="pan-support"></div>
 				</div>
 			</div>
 		</div>
@@ -549,26 +561,64 @@
 	.eq-w { color: #15803d; }
 	.eq-sign { color: #64748b; }
 
-	.scale-container { position: relative; height: 280px; margin: 20px 0; display: flex; justify-content: center; }
+	.scale-container { position: relative; height: 320px; margin: 20px 0; display: flex; justify-content: center; align-items: flex-end; width: 100%; max-width: 100vw; }
+	
+	@media (max-width: 768px) {
+		.scale-container { height: 260px; transform: scale(0.85); transform-origin: center bottom; margin: 10px 0; }
+	}
+	
+	@media (max-width: 480px) {
+		.scale-container { height: 220px; transform: scale(0.7); transform-origin: center bottom; margin: 5px 0; }
+	}
+
 	.pillar { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); }
-	.pillar-base { width: 100px; height: 10px; background: #94a3b8; }
-	.pillar-body { width: 20px; height: 150px; background: #cbd5e1; margin: 0 auto; }
-	.beam-wrapper { position: absolute; top: 30px; width: 100%; max-width: 500px; transition: transform 0.1s; }
-	.beam { display: flex; justify-content: space-between; height: 6px; background: #94a3b8; border-radius: 3px; position: relative; }
-	.pan-side { display: flex; flex-direction: column; align-items: center; transition: transform 0.1s; }
-	.string { width: 1px; height: 80px; background: #94a3b8; }
-	.pan-surface { background: rgba(255,255,255,0.92); border: 1px solid #dbeafe; border-bottom: 4px solid #94a3b8; border-radius: 0 0 40px 40px; padding: 10px; min-height: 80px; width: 160px; display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; align-items: flex-end; }
+	.pillar-base { width: 120px; height: 12px; background: #64748b; border-radius: 4px; }
+	.pillar-body { width: 24px; height: 120px; background: #94a3b8; margin: 0 auto; border-radius: 4px 4px 0 0; }
+	.beam-wrapper { position: absolute; bottom: 120px; width: 100%; max-width: 500px; transition: transform 0.1s; }
+	.beam { display: flex; justify-content: space-between; height: 10px; background: #94a3b8; border-radius: 5px; position: relative; padding: 0; }
+	.pan-side { display: flex; flex-direction: column-reverse; align-items: center; transition: transform 0.1s; position: relative; top: -5px; width: 150px; }
+	
+	/* Adjust pan side positions based on width */
+	.pan-side.left { margin-left: -50px; }
+	.pan-side.right { margin-right: -50px; }
+	
+	@media (max-width: 480px) {
+		.pan-side.left { margin-left: -20px; }
+		.pan-side.right { margin-right: -20px; }
+	}
+
+	.pan-support { width: 4px; height: 40px; background: #cbd5e1; border-radius: 2px; }
+	.pan-surface { background: #ffffff; border: 2px solid #cbd5e1; border-bottom: 5px solid #94a3b8; border-radius: 12px; padding: 10px; min-height: 70px; width: 150px; display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; align-items: flex-end; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
 
 	.mystery-bag { position: relative; width: 34px; height: 42px; background: #d69e2e; border-radius: 6px; transition: transform 0.2s, box-shadow 0.2s; }
+	
+	@media (max-width: 480px) {
+		.mystery-bag { width: 42px; height: 52px; }
+	}
+
 	.weight-item.selected .mystery-bag { border: 2px solid #1d4ed8; box-shadow: 0 0 10px rgba(59,130,246,0.35); transform: scale(1.1); }
 	.weight-item.selected .known-weight { border: 2px solid #1d4ed8; border-radius: 4px; box-shadow: 0 0 10px rgba(59,130,246,0.35); transform: scale(1.1); }
 	
 	.bag-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-weight: bold; }
-	.weight-body { width: 30px; height: 20px; background: #475569; border-radius: 3px; }
-	.weight-text { font-size: 0.6rem; text-align: center; }
+	
+	@media (max-width: 480px) {
+		.bag-label { font-size: 1.1rem; }
+	}
 
-	.pivot { position: absolute; left: 50%; top: -6px; transform: translateX(-50%); }
-	.pivot-circle { width: 18px; height: 18px; background: #facc15; border-radius: 50%; border: 3px solid #e2e8f0; }
+	.weight-body { width: 30px; height: 20px; background: #475569; border-radius: 3px; }
+	
+	@media (max-width: 480px) {
+		.weight-body { width: 38px; height: 26px; }
+	}
+
+	.weight-text { font-size: 0.6rem; text-align: center; }
+	
+	@media (max-width: 480px) {
+		.weight-text { font-size: 0.8rem; }
+	}
+
+	.pivot { position: absolute; left: 50%; top: -8px; transform: translateX(-50%); }
+	.pivot-circle { width: 24px; height: 24px; background: #facc15; border-radius: 50%; border: 4px solid #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
 	.weight-item { cursor: pointer; touch-action: none; }
 
 	.drop-zone { margin: 10px auto; width: 80%; padding: 15px; background: rgba(255,255,255,0.7); border: 2px dashed #94a3b8; border-radius: 12px; text-align: center; color: #475569; }
@@ -592,4 +642,65 @@
 	.drag-cursor .multi-indicator { position: absolute; top: -10px; right: -10px; background: #f56565; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: bold; }
 	.mini-bag { width: 30px; height: 38px; background: #d69e2e; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-weight: bold; }
 	.mini-weight { background: #475569; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; }
+
+	.success-overlay {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		background: rgba(0, 0, 0, 0.4);
+		backdrop-filter: blur(4px);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 100;
+		border-radius: 20px;
+	}
+
+	.success-card {
+		background: white;
+		padding: 30px;
+		border-radius: 20px;
+		text-align: center;
+		box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+		max-width: 80%;
+	}
+
+	.success-icon {
+		font-size: 4rem;
+		margin-bottom: 10px;
+	}
+
+	.success-card h3 {
+		color: #15803d;
+		margin: 0 0 10px;
+		font-size: 1.5rem;
+	}
+
+	.success-result {
+		font-size: 2rem;
+		font-weight: bold;
+		color: #1e3a8a;
+		margin: 20px 0;
+		padding: 10px;
+		background: #eff6ff;
+		border-radius: 12px;
+	}
+
+	.btn-success-action {
+		background: #15803d;
+		color: white;
+		border: none;
+		padding: 12px 24px;
+		border-radius: 12px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: 0.2s;
+	}
+
+	.btn-success-action:hover {
+		background: #166534;
+		transform: translateY(-2px);
+	}
 </style>

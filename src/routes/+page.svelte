@@ -36,6 +36,8 @@
 		'Gunakan tombol "Terapkan" setelah kedua ruas seimbang untuk menyederhanakan persamaan hingga x ditemukan.'
 	];
 
+	let showRules = $state(false);
+
 	function createWeightItem(side: 'left' | 'right', value: number, index: number): WeightItem {
 		return {
 			id: `w-${side}-${index}-${Math.random().toString(36).substring(2, 9)}`,
@@ -247,26 +249,40 @@
 					{/if}
 				</div>
 
-				<div class="rules-card">
-					<h3>📘 Aturan Permainan Neraca</h3>
-					<ol class="rules-list">
-						{#each balanceRules as rule}
-							<li>{rule}</li>
-						{/each}
-					</ol>
+				<div class="rules-card-container">
+					<button class="btn-rules-toggle" onclick={() => showRules = !showRules}>
+						{showRules ? '📖 Sembunyikan Aturan' : '📘 Lihat Aturan Permainan'}
+					</button>
+					{#if showRules}
+						<div class="rules-card">
+							<h3>📘 Aturan Permainan Neraca</h3>
+							<ol class="rules-list">
+								{#each balanceRules as rule}
+									<li>{rule}</li>
+								{/each}
+							</ol>
+						</div>
+					{/if}
 				</div>
 
 				<BalanceScale initialLeft={initialLeft} initialRight={initialRight} />
 			</section>
 		{:else}
 			<section class="section">
-				<div class="rules-card">
-					<h3>📘 Aturan Permainan Pindah Ruas</h3>
-					<ol class="rules-list">
-						{#each transpositionRules as rule}
-							<li>{rule}</li>
-						{/each}
-					</ol>
+				<div class="rules-card-container">
+					<button class="btn-rules-toggle" onclick={() => showRules = !showRules}>
+						{showRules ? '📖 Sembunyikan Aturan' : '📘 Lihat Aturan Permainan'}
+					</button>
+					{#if showRules}
+						<div class="rules-card">
+							<h3>📘 Aturan Permainan Pindah Ruas</h3>
+							<ol class="rules-list">
+								{#each transpositionRules as rule}
+									<li>{rule}</li>
+								{/each}
+							</ol>
+						</div>
+					{/if}
 				</div>
 
 				<Transposition />
@@ -296,6 +312,14 @@
 
 	.app-header { text-align: center; color: white; margin-bottom: 30px; }
 	.subtitle { opacity: 0.9; }
+
+	@media (max-width: 768px) {
+		.app-header { margin-bottom: 15px; }
+		.app-header h1 { font-size: 1.5rem; margin: 0; }
+		.subtitle { font-size: 0.9rem; }
+		.tab-nav { margin-bottom: 15px; }
+		.tab-btn { padding: 10px 16px; font-size: 0.9rem; }
+	}
 
 	.tab-nav { display: flex; gap: 10px; margin-bottom: 20px; justify-content: center; }
 	.tab-btn {
@@ -360,6 +384,30 @@
 		padding: 20px 24px;
 		margin-bottom: 24px;
 		box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+	}
+
+	.rules-card-container {
+		margin-bottom: 24px;
+	}
+
+	.btn-rules-toggle {
+		background: rgba(255, 255, 255, 0.15);
+		border: 1px solid rgba(255, 255, 255, 0.3);
+		color: white;
+		padding: 10px 16px;
+		border-radius: 12px;
+		cursor: pointer;
+		font-weight: 600;
+		transition: 0.3s;
+		width: 100%;
+		text-align: left;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.btn-rules-toggle:hover {
+		background: rgba(255, 255, 255, 0.25);
 	}
 
 	.rules-card h3 {
