@@ -21,10 +21,34 @@
 	let draggingTool: PendingOp | null = $state(null);
 	let dragPos = $state({ x: 0, y: 0 });
 
+	function getOpSignature(op: PendingOp): string {
+		return `${op.type}:${op.isVar ? 'var' : 'num'}:${Number(op.value.toFixed(4))}`;
+	}
+
+	function normalizePending(ops: PendingOp[]): PendingOp[] {
+		return [...ops].sort((a, b) => getOpSignature(a).localeCompare(getOpSignature(b)));
+	}
+
+	function getOrderedPending(ops: PendingOp[]): PendingOp[] {
+		const addOps = normalizePending(ops.filter((op) => op.type === 'add'));
+		const multOps = normalizePending(ops.filter((op) => op.type === 'mult'));
+		return [...addOps, ...multOps];
+	}
+
 	const addNumbers = Array.from({ length: 10 }, (_, i) => i + 1);
+	const variableNumbers = Array.from({ length: 5 }, (_, i) => i + 1);
+
+	function formatVariableToolLabel(value: number): string {
+		const sign = value > 0 ? '+' : '-';
+		const absValue = Math.abs(value);
+		return absValue === 1 ? `${sign}x` : `${sign}${absValue}x`;
+	}
+
 	const addTools = [
-		{ value: 1, type: 'add' as OpType, isVar: true, label: '+x' },
-		{ value: -1, type: 'add' as OpType, isVar: true, label: '-x' },
+		...variableNumbers.flatMap(n => [
+			{ value: n, type: 'add' as OpType, isVar: true, label: formatVariableToolLabel(n) },
+			{ value: -n, type: 'add' as OpType, isVar: true, label: formatVariableToolLabel(-n) }
+		]),
 		...addNumbers.flatMap(n => [
 			{ value: n, type: 'add' as OpType, isVar: false, label: `+${n}` },
 			{ value: -n, type: 'add' as OpType, isVar: false, label: `-${n}` }
@@ -38,10 +62,12 @@
 		{ value: 1/10, type: 'mult' as OpType, label: '1/10' }
 	].sort((a,b) => b.value - a.value);
 
-	let isBalanced = $derived(
-		leftPending.length === rightPending.length && 
-		leftPending.every((op, i) => Math.abs(op.value - rightPending[i].value) < 0.001 && op.type === rightPending[i].type && op.isVar === rightPending[i].isVar)
-	);
+	let isBalanced = $derived.by(() => {
+		if (leftPending.length !== rightPending.length) return false;
+		const normalizedLeft = normalizePending(leftPending);
+		const normalizedRight = normalizePending(rightPending);
+		return normalizedLeft.every((op, i) => getOpSignature(op) === getOpSignature(normalizedRight[i]));
+	});
 
 	let hasPending = $derived(leftPending.length > 0 || rightPending.length > 0);
 
@@ -125,13 +151,14 @@
 
 	function applyOperation() {
 		if (!isBalanced) return;
-		const op = leftPending[0];
-		if (op.type === 'add') {
-			leftTerms = [...leftTerms, { id: Math.random().toString(), value: op.value, isVariable: op.isVar }];
-			rightTerms = [...rightTerms, { id: Math.random().toString(), value: op.value, isVariable: op.isVar }];
-		} else {
-			leftTerms = leftTerms.map(t => ({ ...t, value: t.value * op.value }));
-			rightTerms = rightTerms.map(t => ({ ...t, value: t.value * op.value }));
+		for (const op of getOrderedPending(leftPending)) {
+			if (op.type === 'add') {
+				leftTerms = [...leftTerms, { id: Math.random().toString(), value: op.value, isVariable: op.isVar }];
+				rightTerms = [...rightTerms, { id: Math.random().toString(), value: op.value, isVariable: op.isVar }];
+			} else {
+				leftTerms = leftTerms.map(t => ({ ...t, value: t.value * op.value }));
+				rightTerms = rightTerms.map(t => ({ ...t, value: t.value * op.value }));
+			}
 		}
 		leftPending = []; rightPending = [];
 		setTimeout(simplify, 800);
