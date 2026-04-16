@@ -21,6 +21,18 @@
 	let equationC = $state(0);
 	let equationD = $state(5);
 	let solution = $state('');
+	const balanceRules = [
+		'Perhatikan persamaan di atas neraca, lalu cocokkan isi ruas kiri dan kanan.',
+		'Klik atau pilih beban yang ingin dibuang, lalu seret ke area sampah.',
+		'Setiap pengurangan harus dilakukan sama pada kedua ruas agar neraca tetap seimbang.',
+		'Tujuan akhir permainan adalah menyisakan 1x di satu ruas dan nilai beratnya di ruas lain.'
+	];
+	const transpositionRules = [
+		'Baca bentuk persamaan pada ruas kiri dan kanan sebelum memilih operasi.',
+		'Seret kartu operasi ke kedua ruas dengan operasi yang sama agar persamaan tetap setara.',
+		'Jika status masih "Tidak Seimbang", tambahkan pasangan operasi yang sama atau batalkan.',
+		'Gunakan tombol "Terapkan" setelah kedua ruas seimbang untuk menyederhanakan persamaan hingga x ditemukan.'
+	];
 
 	function createWeightItem(side: 'left' | 'right', value: number, index: number): WeightItem {
 		return {
@@ -233,10 +245,28 @@
 					{/if}
 				</div>
 
+				<div class="rules-card">
+					<h3>📘 Aturan Permainan Neraca</h3>
+					<ol class="rules-list">
+						{#each balanceRules as rule}
+							<li>{rule}</li>
+						{/each}
+					</ol>
+				</div>
+
 				<BalanceScale initialLeft={initialLeft} initialRight={initialRight} />
 			</section>
 		{:else}
 			<section class="section">
+				<div class="rules-card">
+					<h3>📘 Aturan Permainan Pindah Ruas</h3>
+					<ol class="rules-list">
+						{#each transpositionRules as rule}
+							<li>{rule}</li>
+						{/each}
+					</ol>
+				</div>
+
 				<Transposition />
 			</section>
 		{/if}
@@ -319,6 +349,27 @@
 		border-radius: 8px;
 		text-align: center;
 		font-weight: bold;
+	}
+
+	.rules-card {
+		background: rgba(255, 255, 255, 0.96);
+		border-left: 6px solid #f59e0b;
+		border-radius: 16px;
+		padding: 20px 24px;
+		margin-bottom: 24px;
+		box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+	}
+
+	.rules-card h3 {
+		margin: 0 0 12px;
+		color: #92400e;
+	}
+
+	.rules-list {
+		margin: 0;
+		padding-left: 22px;
+		color: #374151;
+		line-height: 1.6;
 	}
 
 	.app-footer { text-align: center; color: rgba(255, 255, 255, 0.7); margin-top: 40px; }

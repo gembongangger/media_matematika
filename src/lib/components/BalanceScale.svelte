@@ -19,13 +19,28 @@
 		initialRight?: WeightItem[];
 	}
 
+	interface AlgebraSnapshot {
+		x: number;
+		w: number;
+	}
+
+	interface AlgebraStep {
+		action: string;
+		leftBefore: AlgebraSnapshot;
+		rightBefore: AlgebraSnapshot;
+		leftAfter: AlgebraSnapshot;
+		rightAfter: AlgebraSnapshot;
+		removedX: number;
+		removedW: number;
+	}
+
 	let { initialLeft = [], initialRight = [] }: Props = $props();
 
 	let leftItems: WeightItem[] = $state([]);
 	let rightItems: WeightItem[] = $state([]);
 	let trueXValue = $state(0);
 	let stepHistory: string[] = $state([]);
-	let algebraSteps: string[] = $state([]);
+	let algebraSteps: AlgebraStep[] = $state([]);
 	let drag: DragState = $state({ item: null, source: null, x: 0, y: 0 });
 	let dropHover = $state(false);
 	let selectedIds: Set<string> = $state(new Set());
@@ -64,9 +79,54 @@
 		return parts.join(" + ");
 	}
 
+	function formatLogEq(x: number, w: number) {
+		let parts = [];
+		if (x > 0) parts.push(x === 1 ? 'x' : `${Number(x.toFixed(2))}x`);
+		if (w > 0) parts.push(`${Number(w.toFixed(2))}`);
+		if (parts.length === 0) return '0';
+		return parts.join(' + ');
+	}
+
+	function formatLogTerm(value: number, suffix = '') {
+		if (value === 1 && suffix) return suffix;
+		return `${Number(value.toFixed(2))}${suffix}`;
+	}
+
+	function getOperationTerms(snapshot: AlgebraSnapshot, removedX: number, removedW: number) {
+		const terms: { text: string; canceled: boolean }[] = [];
+
+		if (snapshot.x > 0) terms.push({ text: formatLogTerm(snapshot.x, 'x'), canceled: false });
+		if (snapshot.w > 0) terms.push({ text: formatLogTerm(snapshot.w), canceled: false });
+		if (removedX > 0) terms.push({ text: `- ${formatLogTerm(removedX, 'x')}`, canceled: false });
+		if (removedW > 0) terms.push({ text: `- ${formatLogTerm(removedW)}`, canceled: false });
+		if (terms.length === 0) terms.push({ text: '0', canceled: false });
+
+		return terms;
+	}
+
+	function getCancellationTerms(before: AlgebraSnapshot, after: AlgebraSnapshot, removedX: number, removedW: number) {
+		const terms: { text: string; canceled: boolean }[] = [];
+		const xCanceledToZero = removedX > 0 && before.x > 0 && after.x === 0;
+		const wCanceledToZero = removedW > 0 && before.w > 0 && after.w === 0;
+
+		if (after.x > 0) terms.push({ text: formatLogTerm(after.x, 'x'), canceled: false });
+		else if (xCanceledToZero) terms.push({ text: formatLogTerm(0, 'x'), canceled: true });
+
+		if (after.w > 0) terms.push({ text: formatLogTerm(after.w), canceled: false });
+		else if (wCanceledToZero) terms.push({ text: formatLogTerm(0), canceled: true });
+
+		if (terms.length === 0) terms.push({ text: '0', canceled: false });
+
+		return terms;
+	}
+
 	function formatVariable(value: number): string {
 		if (value === 1) return 'x';
 		return `${Number(value.toFixed(2))}x`;
+	}
+
+	function needsPlusBefore(term: { text: string }, index: number) {
+		return index > 0 && !term.text.startsWith('-');
 	}
 
 	// Efek untuk mencatat langkah aljabar saat neraca SEIMBANG kembali
@@ -79,22 +139,33 @@
 			const dwR = lastBalancedWRight - weightRight;
 
 			if (dxL > 0 || dwL > 0 || dxR > 0 || dwR > 0) {
+				const removedX = dxL === dxR ? dxL : 0;
+				const removedW = dwL === dwR ? dwL : 0;
+
 				// Format langkah aljabar
 				let action = "";
-				if (dxL === dxR && dxL > 0 && dwL === dwR && dwL > 0) {
-					action = `Kedua ruas dikurangi ${dxL}x dan ${dwL}kg`;
-				} else if (dxL === dxR && dxL > 0) {
-					action = `Kedua ruas dikurangi ${dxL}x`;
-				} else if (dwL === dwR && dwL > 0) {
-					action = `Kedua ruas dikurangi ${dwL}kg`;
+				if (removedX > 0 && removedW > 0) {
+					action = `Kedua ruas dikurangi ${formatLogTerm(removedX, 'x')} dan ${formatLogTerm(removedW)}`;
+				} else if (removedX > 0) {
+					action = `Kedua ruas dikurangi ${formatLogTerm(removedX, 'x')}`;
+				} else if (removedW > 0) {
+					action = `Kedua ruas dikurangi ${formatLogTerm(removedW)}`;
 				} else {
 					action = `Neraca diseimbangkan kembali`;
 				}
 
-				const oldEq = `${formatEq(lastBalancedXLeft, lastBalancedWLeft)} = ${formatEq(lastBalancedXRight, lastBalancedWRight)}`;
-				const newEq = `${formatEq(xCountLeft, weightLeft)} = ${formatEq(xCountRight, weightRight)}`;
-				
-				algebraSteps = [...algebraSteps, `${action} | ${oldEq} → ${newEq}`];
+				algebraSteps = [
+					...algebraSteps,
+					{
+						action,
+						leftBefore: { x: lastBalancedXLeft, w: lastBalancedWLeft },
+						rightBefore: { x: lastBalancedXRight, w: lastBalancedWRight },
+						leftAfter: { x: xCountLeft, w: weightLeft },
+						rightAfter: { x: xCountRight, w: weightRight },
+						removedX,
+						removedW
+					}
+				];
 				
 				// Update state seimbang terakhir
 				lastBalancedXLeft = xCountLeft;
@@ -308,8 +379,49 @@
 			<div class="steps-container">
 				{#each algebraSteps as step}
 					<div class="step-card">
-						<div class="step-action">{step.split('|')[0]}</div>
-						<div class="step-math">{step.split('|')[1]}</div>
+						<div class="step-action">{step.action}</div>
+						<div class="step-trace">
+							<div class="trace-line">
+								<span class="trace-label">Operasi:</span>
+								<span class="trace-eq">
+									<span class="trace-side">
+										{#each getOperationTerms(step.leftBefore, step.removedX, step.removedW) as term, index}
+											{#if needsPlusBefore(term, index)}<span class="trace-join">+</span>{/if}
+											<span>{term.text}</span>
+										{/each}
+									</span>
+									<span class="trace-sign">=</span>
+									<span class="trace-side">
+										{#each getOperationTerms(step.rightBefore, step.removedX, step.removedW) as term, index}
+											{#if needsPlusBefore(term, index)}<span class="trace-join">+</span>{/if}
+											<span>{term.text}</span>
+										{/each}
+									</span>
+								</span>
+							</div>
+							<div class="trace-line">
+								<span class="trace-label">Coret:</span>
+								<span class="trace-eq">
+									<span class="trace-side">
+										{#each getCancellationTerms(step.leftBefore, step.leftAfter, step.removedX, step.removedW) as term, index}
+											{#if needsPlusBefore(term, index)}<span class="trace-join">+</span>{/if}
+											<span class:crossed={term.canceled}>{term.text}</span>
+										{/each}
+									</span>
+									<span class="trace-sign">=</span>
+									<span class="trace-side">
+										{#each getCancellationTerms(step.rightBefore, step.rightAfter, step.removedX, step.removedW) as term, index}
+											{#if needsPlusBefore(term, index)}<span class="trace-join">+</span>{/if}
+											<span class:crossed={term.canceled}>{term.text}</span>
+										{/each}
+									</span>
+								</span>
+							</div>
+							<div class="trace-line">
+								<span class="trace-label">Hasil:</span>
+								<span class="step-math">{formatLogEq(step.leftAfter.x, step.leftAfter.w)} = {formatLogEq(step.rightAfter.x, step.rightAfter.w)}</span>
+							</div>
+						</div>
 					</div>
 				{/each}
 			</div>
@@ -327,52 +439,69 @@
 </div>
 
 <style>
-	.balance-scale { background: #2d3748; border-radius: 20px; padding: 24px; color: white; position: relative; overflow: hidden; }
+	.balance-scale {
+		background: linear-gradient(180deg, #f8fbff 0%, #edf4ff 100%);
+		border: 1px solid #d6e4ff;
+		border-radius: 20px;
+		padding: 24px;
+		color: #1f2937;
+		position: relative;
+		overflow: hidden;
+		box-shadow: 0 18px 40px rgba(59, 130, 246, 0.12);
+	}
 	.scale-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+	.scale-header h3 { color: #1e3a8a; }
 	.header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
-	.badge { padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: 0.8rem; }
+	.badge { padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: 0.8rem; color: white; }
 	.badge.success { background: #48bb78; }
 	.badge.balanced { background: #4299e1; }
 	.badge.unbalanced { background: #f56565; }
 
-	.current-equation { display: flex; justify-content: center; gap: 20px; margin-bottom: 20px; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 12px; font-size: 1.5rem; font-weight: bold; }
-	.eq-x { color: #f6e05e; }
-	.eq-w { color: #68d391; }
-	.eq-sign { color: #a0aec0; }
+	.current-equation { display: flex; justify-content: center; gap: 20px; margin-bottom: 20px; padding: 15px; background: rgba(255,255,255,0.75); border: 1px solid #dbeafe; border-radius: 12px; font-size: 1.5rem; font-weight: bold; }
+	.eq-x { color: #b45309; }
+	.eq-w { color: #15803d; }
+	.eq-sign { color: #64748b; }
 
 	.scale-container { position: relative; height: 280px; margin: 20px 0; display: flex; justify-content: center; }
 	.pillar { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); }
-	.pillar-base { width: 100px; height: 10px; background: #4a5568; }
-	.pillar-body { width: 20px; height: 150px; background: #718096; margin: 0 auto; }
+	.pillar-base { width: 100px; height: 10px; background: #94a3b8; }
+	.pillar-body { width: 20px; height: 150px; background: #cbd5e1; margin: 0 auto; }
 	.beam-wrapper { position: absolute; top: 30px; width: 100%; max-width: 500px; transition: transform 0.1s; }
-	.beam { display: flex; justify-content: space-between; height: 6px; background: #718096; border-radius: 3px; position: relative; }
+	.beam { display: flex; justify-content: space-between; height: 6px; background: #94a3b8; border-radius: 3px; position: relative; }
 	.pan-side { display: flex; flex-direction: column; align-items: center; transition: transform 0.1s; }
-	.string { width: 1px; height: 80px; background: #a0aec0; }
-	.pan-surface { background: rgba(255,255,255,0.1); border-bottom: 4px solid #cbd5e0; border-radius: 0 0 40px 40px; padding: 10px; min-height: 80px; width: 160px; display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; align-items: flex-end; }
+	.string { width: 1px; height: 80px; background: #94a3b8; }
+	.pan-surface { background: rgba(255,255,255,0.92); border: 1px solid #dbeafe; border-bottom: 4px solid #94a3b8; border-radius: 0 0 40px 40px; padding: 10px; min-height: 80px; width: 160px; display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; align-items: flex-end; }
 
 	.mystery-bag { position: relative; width: 34px; height: 42px; background: #d69e2e; border-radius: 6px; transition: transform 0.2s, box-shadow 0.2s; }
-	.weight-item.selected .mystery-bag { border: 2px solid white; box-shadow: 0 0 10px rgba(255,255,255,0.5); transform: scale(1.1); }
-	.weight-item.selected .known-weight { border: 2px solid white; border-radius: 4px; box-shadow: 0 0 10px rgba(255,255,255,0.5); transform: scale(1.1); }
+	.weight-item.selected .mystery-bag { border: 2px solid #1d4ed8; box-shadow: 0 0 10px rgba(59,130,246,0.35); transform: scale(1.1); }
+	.weight-item.selected .known-weight { border: 2px solid #1d4ed8; border-radius: 4px; box-shadow: 0 0 10px rgba(59,130,246,0.35); transform: scale(1.1); }
 	
 	.bag-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-weight: bold; }
-	.weight-body { width: 30px; height: 20px; background: #4a5568; border-radius: 3px; }
+	.weight-body { width: 30px; height: 20px; background: #475569; border-radius: 3px; }
 	.weight-text { font-size: 0.6rem; text-align: center; }
 
 	.pivot { position: absolute; left: 50%; top: -6px; transform: translateX(-50%); }
-	.pivot-circle { width: 18px; height: 18px; background: #f6e05e; border-radius: 50%; border: 3px solid #2d3748; }
+	.pivot-circle { width: 18px; height: 18px; background: #facc15; border-radius: 50%; border: 3px solid #e2e8f0; }
 
-	.drop-zone { margin: 10px auto; width: 80%; padding: 15px; background: rgba(255,255,255,0.05); border: 2px dashed #4a5568; border-radius: 12px; text-align: center; }
+	.drop-zone { margin: 10px auto; width: 80%; padding: 15px; background: rgba(255,255,255,0.7); border: 2px dashed #94a3b8; border-radius: 12px; text-align: center; color: #475569; }
 	.drop-zone.hover { background: rgba(245,101,101,0.2); border-color: #f56565; }
 
-	.algebra-log { margin-top: 20px; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 12px; }
+	.algebra-log { margin-top: 20px; background: rgba(255,255,255,0.7); border: 1px solid #dbeafe; padding: 15px; border-radius: 12px; }
 	.steps-container { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
-	.step-card { background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; border-left: 4px solid #4299e1; }
-	.step-action { font-size: 0.85rem; color: #a0aec0; margin-bottom: 4px; }
-	.step-math { font-family: monospace; font-size: 1rem; color: #f6e05e; }
-	.btn-reset-small { background: rgba(255,255,255,0.08); border: 1px solid #4a5568; color: white; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; }
+	.step-card { background: #ffffff; padding: 10px; border-radius: 8px; border-left: 4px solid #4299e1; }
+	.step-action { font-size: 0.85rem; color: #64748b; margin-bottom: 4px; }
+	.step-math { font-family: monospace; font-size: 1rem; color: #b45309; }
+	.step-trace { display: flex; flex-direction: column; gap: 6px; }
+	.trace-line { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+	.trace-label { min-width: 42px; font-size: 0.8rem; font-weight: bold; color: #475569; }
+	.trace-eq { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; font-family: monospace; font-size: 1rem; color: #b45309; }
+	.trace-side { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+	.trace-sign, .trace-join { color: #64748b; }
+	.crossed { text-decoration: line-through; text-decoration-thickness: 2px; text-decoration-color: #dc2626; color: #94a3b8; }
+	.btn-reset-small { background: #ffffff; border: 1px solid #bfdbfe; color: #1e3a8a; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; }
 
 	.drag-cursor { position: fixed; pointer-events: none; z-index: 1000; transform: translate(-50%,-50%); }
 	.drag-cursor .multi-indicator { position: absolute; top: -10px; right: -10px; background: #f56565; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: bold; }
 	.mini-bag { width: 30px; height: 38px; background: #d69e2e; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-weight: bold; }
-	.mini-weight { background: #4a5568; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; }
+	.mini-weight { background: #475569; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; }
 </style>
