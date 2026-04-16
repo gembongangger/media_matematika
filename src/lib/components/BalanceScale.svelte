@@ -28,6 +28,7 @@
 	let algebraSteps: string[] = $state([]);
 	let drag: DragState = $state({ item: null, source: null, x: 0, y: 0 });
 	let dropHover = $state(false);
+	let selectedIds: Set<string> = $state(new Set());
 
 	// State untuk melacak persamaan terakhir saat seimbang
 	let lastBalancedXLeft = $state(0);
@@ -36,8 +37,8 @@
 	let lastBalancedWRight = $state(0);
 
 	// Hitung counts saat ini
-	let xCountLeft = $derived(leftItems.filter(i => i.type === 'x').length);
-	let xCountRight = $derived(rightItems.filter(i => i.type === 'x').length);
+	let xCountLeft = $derived(leftItems.filter(i => i.type === 'x').reduce((s, i) => s + i.value, 0));
+	let xCountRight = $derived(rightItems.filter(i => i.type === 'x').reduce((s, i) => s + i.value, 0));
 	let weightLeft = $derived(leftItems.filter(i => i.type === 'weight').reduce((s, i) => s + i.value, 0));
 	let weightRight = $derived(rightItems.filter(i => i.type === 'weight').reduce((s, i) => s + i.value, 0));
 
@@ -57,10 +58,15 @@
 
 	function formatEq(x: number, w: number) {
 		let parts = [];
-		if (x > 0) parts.push(`${x}x`);
+		if (x > 0) parts.push(x === 1 ? 'x' : `${x}x`);
 		if (w > 0) parts.push(`${w}kg`);
 		if (parts.length === 0) return "0";
 		return parts.join(" + ");
+	}
+
+	function formatVariable(value: number): string {
+		if (value === 1) return 'x';
+		return `${Number(value.toFixed(2))}x`;
 	}
 
 	// Efek untuk mencatat langkah aljabar saat neraca SEIMBANG kembali
@@ -106,10 +112,27 @@
 
 	function startDrag(item: WeightItem, source: 'left' | 'right', e: MouseEvent | TouchEvent) {
 		e.preventDefault();
+		
+		// Jika klik item yang belum terpilih, bersihkan pilihan lama (kecuali jika tekan Shift, tapi kita pakai sistem toggle saja)
+		// Tapi untuk UX yang intuitif: jika drag item yang belum terpilih, pilih itu saja.
+		if (!selectedIds.has(item.id)) {
+			selectedIds.clear();
+			selectedIds.add(item.id);
+		}
+
 		const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
 		const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
 		drag = { item, source, x: clientX, y: clientY };
 		dropHover = false;
+	}
+
+	function toggleSelect(item: WeightItem, e: MouseEvent | TouchEvent) {
+		e.stopPropagation();
+		if (selectedIds.has(item.id)) {
+			selectedIds.delete(item.id);
+		} else {
+			selectedIds.add(item.id);
+		}
 	}
 
 	function moveDrag(e: MouseEvent | TouchEvent) {
@@ -127,9 +150,38 @@
 		const clientX = 'changedTouches' in e ? e.changedTouches[0].clientX : e.clientX;
 		const clientY = 'changedTouches' in e ? e.changedTouches[0].clientY : e.clientY;
 		const el = document.elementFromPoint(clientX, clientY);
-		if (!!el?.closest('.drop-zone')) removeItem(drag.item, drag.source);
+		
+		if (!!el?.closest('.drop-zone')) {
+			removeSelectedItems(drag.source);
+		}
+		
 		drag = { item: null, source: null, x: 0, y: 0 };
 		dropHover = false;
+	}
+
+	function removeSelectedItems(source: 'left' | 'right') {
+		const toRemove = Array.from(selectedIds);
+		if (toRemove.length === 0) return;
+
+		let itemsToRemove: WeightItem[] = [];
+		if (source === 'left') {
+			itemsToRemove = leftItems.filter(i => selectedIds.has(i.id));
+			leftItems = leftItems.filter(i => !selectedIds.has(i.id));
+		} else {
+			itemsToRemove = rightItems.filter(i => selectedIds.has(i.id));
+			rightItems = rightItems.filter(i => !selectedIds.has(i.id));
+		}
+		
+		const sideName = source === 'left' ? 'kiri' : 'kanan';
+		const xCount = itemsToRemove.filter(i => i.type === 'x').reduce((s, i) => s + i.value, 0);
+		const wTotal = itemsToRemove.filter(i => i.type === 'weight').reduce((s, i) => s + i.value, 0);
+		
+		let logParts = [];
+		if (xCount > 0) logParts.push(formatVariable(xCount));
+		if (wTotal > 0) logParts.push(formatWeight(wTotal));
+		
+		stepHistory = [...stepHistory, `Buang ${logParts.join(' & ')} (${sideName})`];
+		selectedIds.clear();
 	}
 
 	function removeItem(item: WeightItem, source: 'left' | 'right') {
@@ -137,7 +189,7 @@
 		else rightItems = rightItems.filter(i => i.id !== item.id);
 		
 		const sideName = source === 'left' ? 'kiri' : 'kanan';
-		const itemName = item.type === 'x' ? '1x' : formatWeight(item.value);
+		const itemName = item.type === 'x' ? formatVariable(item.value) : formatWeight(item.value);
 		stepHistory = [...stepHistory, `Buang ${itemName} (${sideName})`];
 	}
 
@@ -146,9 +198,10 @@
 		rightItems = [...initialRight];
 		stepHistory = [];
 		algebraSteps = [];
-		lastBalancedXLeft = leftItems.filter(i => i.type === 'x').length;
+		selectedIds.clear();
+		lastBalancedXLeft = leftItems.filter(i => i.type === 'x').reduce((s, i) => s + i.value, 0);
 		lastBalancedWLeft = leftItems.filter(i => i.type === 'weight').reduce((s, i) => s + i.value, 0);
-		lastBalancedXRight = rightItems.filter(i => i.type === 'x').length;
+		lastBalancedXRight = rightItems.filter(i => i.type === 'x').reduce((s, i) => s + i.value, 0);
 		lastBalancedWRight = rightItems.filter(i => i.type === 'weight').reduce((s, i) => s + i.value, 0);
 	}
 
@@ -157,10 +210,11 @@
 		rightItems = [...initialRight];
 		stepHistory = [];
 		algebraSteps = [];
+		selectedIds.clear();
 		
-		const a1 = initialLeft.filter(i => i.type === 'x').length;
+		const a1 = initialLeft.filter(i => i.type === 'x').reduce((s, i) => s + i.value, 0);
 		const b1 = initialLeft.filter(i => i.type === 'weight').reduce((s, i) => s + i.value, 0);
-		const a2 = initialRight.filter(i => i.type === 'x').length;
+		const a2 = initialRight.filter(i => i.type === 'x').reduce((s, i) => s + i.value, 0);
 		const b2 = initialRight.filter(i => i.type === 'weight').reduce((s, i) => s + i.value, 0);
 		
 		if (a1 !== a2) trueXValue = (b2 - b1) / (a1 - a2);
@@ -174,13 +228,16 @@
 <div class="balance-scale" onmousemove={moveDrag} ontouchmove={moveDrag} onmouseup={endDrag} ontouchend={endDrag}>
 	<div class="scale-header">
 		<h3>⚖️ Neraca Aljabar</h3>
-		{#if isSolved}
-			<span class="badge success">🎉 SELESAI! x = {formatWeight(displaySolution || 0)}</span>
-		{:else if isBalanced}
-			<span class="badge balanced">⚖️ Seimbang</span>
-		{:else}
-			<span class="badge unbalanced">⚠️ Tidak Seimbang</span>
-		{/if}
+		<div class="header-actions">
+			{#if isSolved}
+				<span class="badge success">🎉 SELESAI! x = {formatWeight(displaySolution || 0)}</span>
+			{:else if isBalanced}
+				<span class="badge balanced">⚖️ Seimbang</span>
+			{:else}
+				<span class="badge unbalanced">⚠️ Tidak Seimbang</span>
+			{/if}
+			<button class="btn-reset-small" onclick={reset}>↺ Reset Timbangan</button>
+		</div>
 	</div>
 
 	<div class="current-equation">
@@ -209,8 +266,12 @@
 					<div class="pan">
 						<div class="pan-surface">
 							{#each leftItems as item (item.id)}
-								<div class="weight-item {drag.item?.id === item.id ? 'dragging' : ''}" onmousedown={(e) => startDrag(item, 'left', e)} ontouchstart={(e) => startDrag(item, 'left', e)}>
-									{#if item.type === 'x'}<div class="mystery-bag"><div class="bag-body"></div><div class="bag-label">x</div></div>
+								<div class="weight-item {drag.item?.id === item.id ? 'dragging' : ''} {selectedIds.has(item.id) ? 'selected' : ''}" 
+									onmousedown={(e) => startDrag(item, 'left', e)} 
+									ontouchstart={(e) => startDrag(item, 'left', e)}
+									onclick={(e) => toggleSelect(item, e)}
+								>
+									{#if item.type === 'x'}<div class="mystery-bag"><div class="bag-body"></div><div class="bag-label">{formatVariable(item.value)}</div></div>
 									{:else}<div class="known-weight"><div class="weight-plate"><div class="weight-body"></div><div class="weight-text">{formatWeight(item.value)}</div></div></div>{/if}
 								</div>
 							{/each}
@@ -223,8 +284,12 @@
 					<div class="pan">
 						<div class="pan-surface">
 							{#each rightItems as item (item.id)}
-								<div class="weight-item {drag.item?.id === item.id ? 'dragging' : ''}" onmousedown={(e) => startDrag(item, 'right', e)} ontouchstart={(e) => startDrag(item, 'right', e)}>
-									{#if item.type === 'x'}<div class="mystery-bag"><div class="bag-body"></div><div class="bag-label">x</div></div>
+								<div class="weight-item {drag.item?.id === item.id ? 'dragging' : ''} {selectedIds.has(item.id) ? 'selected' : ''}" 
+									onmousedown={(e) => startDrag(item, 'right', e)} 
+									ontouchstart={(e) => startDrag(item, 'right', e)}
+									onclick={(e) => toggleSelect(item, e)}
+								>
+									{#if item.type === 'x'}<div class="mystery-bag"><div class="bag-body"></div><div class="bag-label">{formatVariable(item.value)}</div></div>
 									{:else}<div class="known-weight"><div class="weight-plate"><div class="weight-body"></div><div class="weight-text">{formatWeight(item.value)}</div></div></div>{/if}
 								</div>
 							{/each}
@@ -248,20 +313,23 @@
 					</div>
 				{/each}
 			</div>
-			<button class="btn-reset-small" onclick={reset}>↺ Reset Timbangan</button>
 		</div>
 	{/if}
 
 	{#if drag.item}
 		<div class="drag-cursor" style="left: {drag.x}px; top: {drag.y}px">
-			{#if drag.item.type === 'x'}<div class="mini-bag">x</div>{:else}<div class="mini-weight">{formatWeight(drag.item.value)}</div>{/if}
+			{#if selectedIds.size > 1}
+				<div class="multi-indicator">{selectedIds.size}</div>
+			{/if}
+			{#if drag.item.type === 'x'}<div class="mini-bag">{formatVariable(drag.item.value)}</div>{:else}<div class="mini-weight">{formatWeight(drag.item.value)}</div>{/if}
 		</div>
 	{/if}
 </div>
 
 <style>
 	.balance-scale { background: #2d3748; border-radius: 20px; padding: 24px; color: white; position: relative; overflow: hidden; }
-	.scale-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+	.scale-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+	.header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 	.badge { padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: 0.8rem; }
 	.badge.success { background: #48bb78; }
 	.badge.balanced { background: #4299e1; }
@@ -282,7 +350,10 @@
 	.string { width: 1px; height: 80px; background: #a0aec0; }
 	.pan-surface { background: rgba(255,255,255,0.1); border-bottom: 4px solid #cbd5e0; border-radius: 0 0 40px 40px; padding: 10px; min-height: 80px; width: 160px; display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; align-items: flex-end; }
 
-	.mystery-bag { position: relative; width: 34px; height: 42px; background: #d69e2e; border-radius: 6px; }
+	.mystery-bag { position: relative; width: 34px; height: 42px; background: #d69e2e; border-radius: 6px; transition: transform 0.2s, box-shadow 0.2s; }
+	.weight-item.selected .mystery-bag { border: 2px solid white; box-shadow: 0 0 10px rgba(255,255,255,0.5); transform: scale(1.1); }
+	.weight-item.selected .known-weight { border: 2px solid white; border-radius: 4px; box-shadow: 0 0 10px rgba(255,255,255,0.5); transform: scale(1.1); }
+	
 	.bag-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-weight: bold; }
 	.weight-body { width: 30px; height: 20px; background: #4a5568; border-radius: 3px; }
 	.weight-text { font-size: 0.6rem; text-align: center; }
@@ -298,9 +369,10 @@
 	.step-card { background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; border-left: 4px solid #4299e1; }
 	.step-action { font-size: 0.85rem; color: #a0aec0; margin-bottom: 4px; }
 	.step-math { font-family: monospace; font-size: 1rem; color: #f6e05e; }
-	.btn-reset-small { background: none; border: 1px solid #4a5568; color: white; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; }
+	.btn-reset-small { background: rgba(255,255,255,0.08); border: 1px solid #4a5568; color: white; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; }
 
 	.drag-cursor { position: fixed; pointer-events: none; z-index: 1000; transform: translate(-50%,-50%); }
+	.drag-cursor .multi-indicator { position: absolute; top: -10px; right: -10px; background: #f56565; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: bold; }
 	.mini-bag { width: 30px; height: 38px; background: #d69e2e; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-weight: bold; }
 	.mini-weight { background: #4a5568; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; }
 </style>
