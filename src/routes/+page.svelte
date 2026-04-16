@@ -23,8 +23,10 @@
 	let solution = $state('');
 	const balanceRules = [
 		'Perhatikan persamaan di atas neraca, lalu cocokkan isi ruas kiri dan kanan.',
+		'Jika ada blok seperti 2x atau 4kg, pilih tool hammer untuk memecahnya menjadi bagian-bagian kecil yang setara.',
 		'Klik atau pilih beban yang ingin dibuang, lalu seret ke area sampah.',
 		'Setiap pengurangan harus dilakukan sama pada kedua ruas agar neraca tetap seimbang.',
+		'Tool hammer hanya untuk memecah kelompok, bukan untuk menghapus satu ruas saja.',
 		'Tujuan akhir permainan adalah menyisakan 1x di satu ruas dan nilai beratnya di ruas lain.'
 	];
 	const transpositionRules = [

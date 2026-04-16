@@ -44,6 +44,7 @@
 	let drag: DragState = $state({ item: null, source: null, x: 0, y: 0 });
 	let dropHover = $state(false);
 	let selectedIds: Set<string> = $state(new Set());
+	let activeTool: 'select' | 'hammer' = $state('select');
 
 	// State untuk melacak persamaan terakhir saat seimbang
 	let lastBalancedXLeft = $state(0);
@@ -125,6 +126,15 @@
 		return `${Number(value.toFixed(2))}x`;
 	}
 
+	function createSplitItem(source: 'left' | 'right', item: WeightItem, value: number, index: number): WeightItem {
+		const base = item.type === 'x' ? 'x' : 'w';
+		return {
+			id: `${base}-${source}-split-${index}-${Math.random().toString(36).slice(2, 9)}`,
+			type: item.type,
+			value
+		};
+	}
+
 	function needsPlusBefore(term: { text: string }, index: number) {
 		return index > 0 && !term.text.startsWith('-');
 	}
@@ -199,11 +209,62 @@
 
 	function toggleSelect(item: WeightItem, e: MouseEvent | TouchEvent) {
 		e.stopPropagation();
+		if (activeTool === 'hammer') {
+			return;
+		}
 		if (selectedIds.has(item.id)) {
 			selectedIds.delete(item.id);
 		} else {
 			selectedIds.add(item.id);
 		}
+	}
+
+	function getSplitValues(item: WeightItem, source: 'left' | 'right') {
+		if (item.type === 'x') {
+			return Array.from({ length: Math.floor(item.value) }, () => 1);
+		}
+
+		const oppositeXCount = source === 'left' ? xCountRight : xCountLeft;
+		const preferredParts = oppositeXCount > 1 && Math.abs(item.value % oppositeXCount) < 0.001
+			? oppositeXCount
+			: Math.floor(item.value);
+
+		if (preferredParts <= 1) {
+			return Array.from({ length: Math.floor(item.value) }, () => 1);
+		}
+
+		const eachValue = Number((item.value / preferredParts).toFixed(2));
+		return Array.from({ length: preferredParts }, () => eachValue);
+	}
+
+	function splitItem(item: WeightItem, source: 'left' | 'right') {
+		if (item.value <= 1) return;
+
+		const splitValues = getSplitValues(item, source);
+		if (splitValues.length <= 1) return;
+		const splitItems = splitValues.map((value, index) => createSplitItem(source, item, value, index));
+
+		if (source === 'left') {
+			leftItems = leftItems.flatMap((current) => current.id === item.id ? splitItems : [current]);
+		} else {
+			rightItems = rightItems.flatMap((current) => current.id === item.id ? splitItems : [current]);
+		}
+
+		selectedIds.delete(item.id);
+		const itemName = item.type === 'x' ? formatVariable(item.value) : formatWeight(item.value);
+		const resultName = splitItems.map((part) => item.type === 'x' ? formatVariable(part.value) : formatWeight(part.value)).join(' + ');
+		const sideName = source === 'left' ? 'kiri' : 'kanan';
+		stepHistory = [...stepHistory, `Hammer: ${itemName} dipecah menjadi ${resultName} (${sideName})`];
+	}
+
+	function handleItemPointerDown(item: WeightItem, source: 'left' | 'right', e: MouseEvent | TouchEvent) {
+		if (activeTool === 'hammer') {
+			e.preventDefault();
+			splitItem(item, source);
+			return;
+		}
+
+		startDrag(item, source, e);
 	}
 
 	function moveDrag(e: MouseEvent | TouchEvent) {
@@ -311,6 +372,28 @@
 		</div>
 	</div>
 
+	<div class="tool-panel">
+		<button
+			class="tool-toggle {activeTool === 'select' ? 'active' : ''}"
+			onclick={() => activeTool = 'select'}
+		>
+			🖐️ Pilih / Buang
+		</button>
+		<button
+			class="tool-toggle {activeTool === 'hammer' ? 'active' : ''}"
+			onclick={() => activeTool = 'hammer'}
+		>
+			🔨 Hammer Pecah
+		</button>
+		<p class="tool-hint">
+			{#if activeTool === 'hammer'}
+				Klik item bernilai besar seperti `3x` atau `6kg`. Beban angka akan dipecah mengikuti jumlah `x` di ruas lawan jika bisa dibagi rata.
+			{:else}
+				Pilih item yang sama pada kedua ruas lalu seret ke tempat sampah agar neraca tetap setara.
+			{/if}
+		</p>
+	</div>
+
 	<div class="current-equation">
 		<div class="eq-box">
 			<span class="eq-x">{xCountLeft > 0 ? `${xCountLeft}x` : ''}</span>
@@ -338,8 +421,8 @@
 						<div class="pan-surface">
 							{#each leftItems as item (item.id)}
 								<div class="weight-item {drag.item?.id === item.id ? 'dragging' : ''} {selectedIds.has(item.id) ? 'selected' : ''}" 
-									onmousedown={(e) => startDrag(item, 'left', e)} 
-									ontouchstart={(e) => startDrag(item, 'left', e)}
+									onmousedown={(e) => handleItemPointerDown(item, 'left', e)} 
+									ontouchstart={(e) => handleItemPointerDown(item, 'left', e)}
 									onclick={(e) => toggleSelect(item, e)}
 								>
 									{#if item.type === 'x'}<div class="mystery-bag"><div class="bag-body"></div><div class="bag-label">{formatVariable(item.value)}</div></div>
@@ -356,8 +439,8 @@
 						<div class="pan-surface">
 							{#each rightItems as item (item.id)}
 								<div class="weight-item {drag.item?.id === item.id ? 'dragging' : ''} {selectedIds.has(item.id) ? 'selected' : ''}" 
-									onmousedown={(e) => startDrag(item, 'right', e)} 
-									ontouchstart={(e) => startDrag(item, 'right', e)}
+									onmousedown={(e) => handleItemPointerDown(item, 'right', e)} 
+									ontouchstart={(e) => handleItemPointerDown(item, 'right', e)}
 									onclick={(e) => toggleSelect(item, e)}
 								>
 									{#if item.type === 'x'}<div class="mystery-bag"><div class="bag-body"></div><div class="bag-label">{formatVariable(item.value)}</div></div>
@@ -452,6 +535,10 @@
 	.scale-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
 	.scale-header h3 { color: #1e3a8a; }
 	.header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+	.tool-panel { margin-bottom: 16px; padding: 14px; background: rgba(255,255,255,0.75); border: 1px solid #dbeafe; border-radius: 12px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+	.tool-toggle { border: 1px solid #bfdbfe; background: #ffffff; color: #1e3a8a; padding: 8px 12px; border-radius: 10px; cursor: pointer; font-weight: 700; }
+	.tool-toggle.active { background: #1d4ed8; border-color: #1d4ed8; color: #ffffff; box-shadow: 0 10px 18px rgba(29, 78, 216, 0.18); }
+	.tool-hint { margin: 0; color: #475569; font-size: 0.92rem; }
 	.badge { padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: 0.8rem; color: white; }
 	.badge.success { background: #48bb78; }
 	.badge.balanced { background: #4299e1; }
@@ -482,6 +569,7 @@
 
 	.pivot { position: absolute; left: 50%; top: -6px; transform: translateX(-50%); }
 	.pivot-circle { width: 18px; height: 18px; background: #facc15; border-radius: 50%; border: 3px solid #e2e8f0; }
+	.weight-item { cursor: pointer; touch-action: none; }
 
 	.drop-zone { margin: 10px auto; width: 80%; padding: 15px; background: rgba(255,255,255,0.7); border: 2px dashed #94a3b8; border-radius: 12px; text-align: center; color: #475569; }
 	.drop-zone.hover { background: rgba(245,101,101,0.2); border-color: #f56565; }

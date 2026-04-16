@@ -122,6 +122,7 @@
 	}
 
 	function startDragTool(tool: any, e: MouseEvent | TouchEvent) {
+		e.preventDefault();
 		draggingTool = { ...tool };
 		const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
 		const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
@@ -130,6 +131,7 @@
 
 	function handleMove(e: MouseEvent | TouchEvent) {
 		if (!draggingTool) return;
+		e.preventDefault();
 		const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
 		const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
 		dragPos = { x: clientX, y: clientY };
@@ -305,7 +307,7 @@
 	.tool-section h4 { font-size: 0.8rem; color: #a0aec0; margin-bottom: 12px; text-transform: uppercase; }
 	.tools-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 	.tools-grid.scrollable { max-height: 180px; overflow-y: auto; padding-right: 5px; }
-	.tool-card { padding: 8px 12px; border-radius: 6px; cursor: grab; font-weight: bold; font-size: 0.9rem; border: 1px solid rgba(255,255,255,0.1); background: #2d3748; min-width: 45px; text-align: center; }
+	.tool-card { padding: 8px 12px; border-radius: 6px; cursor: grab; font-weight: bold; font-size: 0.9rem; border: 1px solid rgba(255,255,255,0.1); background: #2d3748; min-width: 45px; text-align: center; touch-action: none; }
 	.tool-card.mult { border-color: #4299e1; background: #2c5282; }
 	.tool-card:hover { border-color: #f6e05e; transform: scale(1.05); }
 
